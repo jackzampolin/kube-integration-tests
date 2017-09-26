@@ -12,16 +12,16 @@ const blockstackCore = require('./src/blockstack-core.js');
 const reporting = require('./src/reporting.js');
 const slackClient = require('./src/slack.js');
 
-// Instantiate Logger
-const logger = new winston.Logger({transports: [{
-    "level": "warn",
-    "handleExceptions": true,
-    "stringify": false,
-    "timestamp": true,
-    "colorize": true,
-    "json": true,
-    "humanReadableUnhandledException": true
-  }]});
+const logger = new winston.Logger({
+  level: 'info',
+  handleExceptions: true,
+  stringify: false,
+  timestamp: true,
+  colorize: true,
+  json: true,
+  humanReadableUnhandledException: true,
+  transports: [new (winston.transports.Console)()]
+});
 
 // Instantiate express app
 const app = express();
@@ -58,7 +58,7 @@ function getTag (tags) {
 // Handle the webhook route
 app.post('/', function (req, res) {
   // Pull branch information from request
-  logger.log(`Post conatined following tags: ${req.body.updated_tags}`)
+  logger.info(`Post conatined following tags: ${req.body.updated_tags}`)
   let gitBranch = getTag(req.body.updated_tags);
 
   // Start timer
@@ -81,7 +81,7 @@ app.post('/', function (req, res) {
     let failed = [];
 
     // Log the start of the test
-    logger.log(`[${namespace}] Starting...`)
+    logger.info(`[${namespace}] Starting...`)
     kube.getNodes().then((result) => {
       numNodes = result.items.length;
       sl.send(`Test \`${namespace}\` started. Go to the dashboard to watch progress: \`https://monitoring.technofractal.com/sources/1/dashboards/7\`.`)
@@ -90,23 +90,23 @@ app.post('/', function (req, res) {
 
     // Create test log folder
     mkdirp(`${__dirname}/test-out/${namespace}`, (err) => {
-        if (err) { logger.log(err) }
+        if (err) { logger.info(err) }
     });
 
     // Create the namespace and then create tests in it
     kube.createNamespace(namespace).then((result) => {
-      logger.log(`[${namespace}] ${runs} queued...`)
+      logger.info(`[${namespace}] ${runs} queued...`)
       let runs = 0;
       // Create 10 / second to avoid flooding the API server
       let interval = setInterval(() => {
-        kube.createPod(gitBranch, gitCommit, tests[runs], tests.length).catch((err) => { logger.log(err) })
+        kube.createPod(gitBranch, gitCommit, tests[runs], tests.length).catch((err) => { logger.info(err) })
         runs++;
         if (runs >= tests.length) {
-          logger.log(`[${namespace}] ${runs} started...`)
+          logger.info(`[${namespace}] ${runs} started...`)
           clearInterval(interval)
         }
       }, 100)
-    }).catch((err) => { logger.log(err) })
+    }).catch((err) => { logger.info(err) })
 
     res.send(JSON.stringify({"status": "ok"}))
 
@@ -138,7 +138,7 @@ app.post('/', function (req, res) {
                   logger.error(`[${namespace}] test in ${podName} failed...`)
                   sl.send(`Test \`${podName}\` failed. Logs available: \`${config.serverName}/${filePath}\``)
                   fs.writeFileSync(`${__dirname}/test-out/${filePath}`, log)
-                }).catch((err) => { logger.log(err) })
+                }).catch((err) => { logger.info(err) })
               }
               failed.push(podName)
             }
@@ -151,10 +151,10 @@ app.post('/', function (req, res) {
           remain = podStatuses.running + podStatuses.pending
           compPerc = (comp / tests.length) * 100
           remainPerc = (remain /tests.length) * 100
-          logger.log(`[${namespace}] comp: ${comp}, remain: ${remain}, iter: ${runs}`)
+          logger.info(`[${namespace}] comp: ${comp}, remain: ${remain}, iter: ${runs}`)
           influx.logProgress(gitBranch, gitCommit, "progress", tests.length, numPods, numNodes, compPerc, comp, remainPerc, remain)
         })
-      }).catch((err) => { logger.log(err) })
+      }).catch((err) => { logger.info(err) })
 
       // Increment the number of runs
       runs++;
@@ -166,10 +166,10 @@ app.post('/', function (req, res) {
   Success Tests: ${tests.length - failed.length}
   Failed Tests: ${failed}`
       if (runs > 5 && numPods === 0) {
-        logger.log(testLog)
+        logger.info(testLog)
         sl.send(`\`\`\`${test.log}\`\`\``)
         influx.logProgress(gitBranch, gitCommit, "startStop", tests.length, 0, numNodes, 100.0, tests.length, 0.0, 0);
-        kube.deleteNamespace(namespace).then((ns) => { logger.log(`[${namespace}] Finshed...`) }).catch((err) => { logger.log(err) })
+        kube.deleteNamespace(namespace).then((ns) => { logger.info(`[${namespace}] Finshed...`) }).catch((err) => { logger.info(err) })
         clearInterval(interval);
       }
 
@@ -177,7 +177,7 @@ app.post('/', function (req, res) {
       if (runs >= 90) {
         influx.logProgress(gitBranch, gitCommit, "startStop", tests.length, 0, numNodes, 100.0, tests.length, 0.0, 0);
         sl.send(`\`\`\`${test.log}\`\`\``)
-        logger.log(testLog)
+        logger.info(testLog)
         kube.getPods(namespace).then((result) => {
           let stalledPods = result.items.filter((pod) => { pod.status.phase.toLowerCase() === "running" })
           stalledPods.forEach((pod) => {
@@ -186,9 +186,9 @@ app.post('/', function (req, res) {
               let logsUrl = `https://${config.serverName}/test-out/${namespace}/${podName}`
               sl.send(`Test \`${pod}\` stalled. Logs available: \`${logsUrl}\``)
               fs.writeFileSync(`${__dirname}/test-out/${namespace}/${podName}`, log)
-            }).catch((err) => { logger.log(err) })
+            }).catch((err) => { logger.info(err) })
           })
-          kube.deleteNamespace(namespace).then((ns) => { logger.log(`[${namespace}] Finshed...`) }).catch((err) => { logger.log(err) })
+          kube.deleteNamespace(namespace).then((ns) => { logger.info(`[${namespace}] Finshed...`) }).catch((err) => { logger.info(err) })
         })
         clearInterval(interval);
       }
@@ -201,5 +201,5 @@ app.post('/', function (req, res) {
 app.use(express.static(path.resolve(__dirname, 'test-out')));
 
 app.listen(config.bindPort, function () {
-  logger.log(`Quay webhook server is listening on ${config.bindPort}...`)
+  logger.info(`Quay webhook server is listening on ${config.bindPort}...`)
 })
