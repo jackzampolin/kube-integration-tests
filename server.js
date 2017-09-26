@@ -95,7 +95,7 @@ app.post('/', function (req, res) {
 
     // Create the namespace and then create tests in it
     kube.createNamespace(namespace).then((result) => {
-      logger.info(`[${namespace}] ${runs} queued...`)
+      logger.info(`[${namespace}] ${tests.length} queued...`)
       let runs = 0;
       // Create 10 / second to avoid flooding the API server
       let interval = setInterval(() => {
