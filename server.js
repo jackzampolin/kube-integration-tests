@@ -167,7 +167,7 @@ app.post('/', function (req, res) {
   Failed Tests: ${failed}`
       if (runs > 5 && numPods === 0) {
         logger.info(testLog)
-        sl.send(`\`\`\`${test.log}\`\`\``)
+        sl.send(`\`\`\`${testLog}\`\`\``)
         influx.logProgress(gitBranch, gitCommit, "startStop", tests.length, 0, numNodes, 100.0, tests.length, 0.0, 0);
         kube.deleteNamespace(namespace).then((ns) => { logger.info(`[${namespace}] Finshed...`) }).catch((err) => { logger.info(err) })
         clearInterval(interval);
@@ -176,7 +176,7 @@ app.post('/', function (req, res) {
       // In the case of stalled pods, end the test and save the logs from the stalled pods
       if (runs >= 90) {
         influx.logProgress(gitBranch, gitCommit, "startStop", tests.length, 0, numNodes, 100.0, tests.length, 0.0, 0);
-        sl.send(`\`\`\`${test.log}\`\`\``)
+        sl.send(`\`\`\`${testLog}\`\`\``)
         logger.info(testLog)
         kube.getPods(namespace).then((result) => {
           let stalledPods = result.items.filter((pod) => { pod.status.phase.toLowerCase() === "running" })
