@@ -5,11 +5,23 @@ const path = require('path');
 const git = require('git-rev-sync');
 const bodyParser = require('body-parser');
 const mkdirp = require('mkdirp');
+const winston = require('winston');
 
 const kubeClient = require('./src/kube.js');
 const blockstackCore = require('./src/blockstack-core.js');
 const reporting = require('./src/reporting.js');
 const slackClient = require('./src/slack.js');
+
+// Instantiate Logger
+const logger = new winston.Logger({transports: [{
+    "level": "warn",
+    "handleExceptions": true,
+    "stringify": false,
+    "timestamp": true,
+    "colorize": true,
+    "json": true,
+    "humanReadableUnhandledException": true
+  }]});
 
 // Instantiate express app
 const app = express();
@@ -46,6 +58,7 @@ function getTag (tags) {
 // Handle the webhook route
 app.post('/', function (req, res) {
   // Pull branch information from request
+  logger.log(`Post conatined following tags: ${req.body.updated_tags}`)
   let gitBranch = getTag(req.body.updated_tags);
 
   // Start timer
@@ -68,32 +81,32 @@ app.post('/', function (req, res) {
     let failed = [];
 
     // Log the start of the test
-    console.log(`Test ${namespace} started...`);
+    logger.log(`[${namespace}] Starting...`)
     kube.getNodes().then((result) => {
       numNodes = result.items.length;
       sl.send(`Test \`${namespace}\` started. Go to the dashboard to watch progress: \`https://monitoring.technofractal.com/sources/1/dashboards/7\`.`)
       influx.logProgress(gitBranch, gitCommit, "startStop", tests.length, numPods, numNodes, compPerc, comp, remainPerc, remain);
-    }).catch((err) => { console.log(err) });
+    }).catch((err) => { logger.error(err) });
 
     // Create test log folder
-    mkdirp(`${__dirname}/testOut/${namespace}`, (err) => {
-        if (err) { console.log(err) }
+    mkdirp(`${__dirname}/test-out/${namespace}`, (err) => {
+        if (err) { logger.log(err) }
     });
 
     // Create the namespace and then create tests in it
     kube.createNamespace(namespace).then((result) => {
-      console.log(`Number Queued:  ${tests.length}`)
+      logger.log(`[${namespace}] ${runs} queued...`)
       let runs = 0;
       // Create 10 / second to avoid flooding the API server
       let interval = setInterval(() => {
-        kube.createPod(gitBranch, gitCommit, tests[runs], tests.length).catch((err) => { console.log(err) })
+        kube.createPod(gitBranch, gitCommit, tests[runs], tests.length).catch((err) => { logger.log(err) })
         runs++;
         if (runs >= tests.length) {
-          console.log(`Number Started: ${runs}`)
+          logger.log(`[${namespace}] ${runs} started...`)
           clearInterval(interval)
         }
       }, 100)
-    }).catch((err) => { console.log(err) })
+    }).catch((err) => { logger.log(err) })
 
     res.send(JSON.stringify({"status": "ok"}))
 
@@ -122,10 +135,10 @@ app.post('/', function (req, res) {
               if (!failed.includes(podName)) {
                 kube.getLogs(namespace, podName).then((log) => {
                   let filePath = `${namespace}/${podName}`
-                  console.log(`Test ${podName} failed...`)
+                  logger.error(`[${namespace}] test in ${podName} failed...`)
                   sl.send(`Test \`${podName}\` failed. Logs available: \`${config.serverName}/${filePath}\``)
-                  fs.writeFileSync(`${__dirname}/testOut/${filePath}`, log)
-                }).catch((err) => { console.log(err) })
+                  fs.writeFileSync(`${__dirname}/test-out/${filePath}`, log)
+                }).catch((err) => { logger.log(err) })
               }
               failed.push(podName)
             }
@@ -138,25 +151,25 @@ app.post('/', function (req, res) {
           remain = podStatuses.running + podStatuses.pending
           compPerc = (comp / tests.length) * 100
           remainPerc = (remain /tests.length) * 100
-          console.log(`Completed: ${comp}, Remaining: ${remain}, Iterations: ${runs}`)
+          logger.log(`[${namespace}] comp: ${comp}, remain: ${remain}, iter: ${runs}`)
           influx.logProgress(gitBranch, gitCommit, "progress", tests.length, numPods, numNodes, compPerc, comp, remainPerc, remain)
         })
-      }).catch((err) => { console.log(err) })
+      }).catch((err) => { logger.log(err) })
 
       // Increment the number of runs
       runs++;
 
       // Check if the test is complete, if it is report
-      let testLog = `Integration Test Run Results for ${namespace}:
+      let testLog = `[${namespace}]Run results:
   Test Time:    ${startTime.diff(moment(), 'minutes')}
   Number Tests: ${tests.length}
   Success Tests: ${tests.length - failed.length}
   Failed Tests: ${failed}`
       if (runs > 5 && numPods === 0) {
-        console.log(testLog)
+        logger.log(testLog)
         sl.send(`\`\`\`${test.log}\`\`\``)
         influx.logProgress(gitBranch, gitCommit, "startStop", tests.length, 0, numNodes, 100.0, tests.length, 0.0, 0);
-        kube.deleteNamespace(namespace).then((ns) => { console.log(`Test ${namespace} finshed and cleaned up...`)}).catch((err) => { console.log(err) })
+        kube.deleteNamespace(namespace).then((ns) => { logger.log(`[${namespace}] Finshed...`) }).catch((err) => { logger.log(err) })
         clearInterval(interval);
       }
 
@@ -164,18 +177,18 @@ app.post('/', function (req, res) {
       if (runs >= 90) {
         influx.logProgress(gitBranch, gitCommit, "startStop", tests.length, 0, numNodes, 100.0, tests.length, 0.0, 0);
         sl.send(`\`\`\`${test.log}\`\`\``)
-        console.log(testLog)
+        logger.log(testLog)
         kube.getPods(namespace).then((result) => {
           let stalledPods = result.items.filter((pod) => { pod.status.phase.toLowerCase() === "running" })
           stalledPods.forEach((pod) => {
             let podName = pod.metadata.name
             kube.getLogs(namespace, podName).then((log) => {
-              let logsUrl = `https://${config.serverName}/testOut/${namespace}/${podName}`
+              let logsUrl = `https://${config.serverName}/test-out/${namespace}/${podName}`
               sl.send(`Test \`${pod}\` stalled. Logs available: \`${logsUrl}\``)
-              fs.writeFileSync(`${__dirname}/testOut/${namespace}/${podName}`, log)
-            }).catch((err) => { console.log(err) })
+              fs.writeFileSync(`${__dirname}/test-out/${namespace}/${podName}`, log)
+            }).catch((err) => { logger.log(err) })
           })
-          kube.deleteNamespace(namespace).then((ns) => { console.log(`Test ${namespace} finshed and cleaned up...`)}).catch((err) => { console.log(err) })
+          kube.deleteNamespace(namespace).then((ns) => { logger.log(`[${namespace}] Finshed...`) }).catch((err) => { logger.log(err) })
         })
         clearInterval(interval);
       }
@@ -188,5 +201,5 @@ app.post('/', function (req, res) {
 app.use(express.static(path.resolve(__dirname, 'test-out')));
 
 app.listen(config.bindPort, function () {
-  console.log(`Quay webhook server is listening on ${config.bindPort}...`)
+  logger.log(`Quay webhook server is listening on ${config.bindPort}...`)
 })

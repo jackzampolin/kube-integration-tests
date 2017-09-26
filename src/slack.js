@@ -1,5 +1,6 @@
 var rp = require('request-promise-native');
 
+// TODO: add logger to config and pass here to catch that error
 class SlackClient {
   constructor (config) {
     this.slackUrl = config.slackURL
