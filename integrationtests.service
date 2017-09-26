@@ -1,0 +1,10 @@
+[Service]
+ExecStart=/usr/bin/node /home/ubuntu/kube-integration-tests/server.js
+WorkingDirectory=/home/ubuntu/kube-integration-tests
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=integrationtests
+
+[Install]
+WantedBy=multi-user.target
+

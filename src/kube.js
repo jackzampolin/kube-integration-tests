@@ -6,7 +6,7 @@ class Kube {
     this.influxUser = config.influxUser
     this.influxPass = config.influxPass
     this.influxSSL = config.influxSSL
-    this.client = new kube.Core(kube.config.fromKubeconfig());
+    this.client = new kube.Core(kube.config.fromKubeconfig(kube.config.loadKubeconfig(config.kubeConfigPath)));
   }
 
   createNamespace (namespace) {
