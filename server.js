@@ -139,8 +139,8 @@ app.post('/', function (req, res) {
                   sl.send(`Test \`${podName}\` failed. Logs available: \`${config.serverName}/${filePath}\``)
                   fs.writeFileSync(`${__dirname}/test-out/${filePath}`, log)
                 }).catch((err) => { logger.info(err) })
+                failed.push(podName)
               }
-              failed.push(podName)
             }
             podStatuses[status] += 1
           })
