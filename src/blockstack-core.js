@@ -38,10 +38,8 @@ class BlockstackCore {
             certificateCheck: () => { return 1 }
           }
         });
-      }).then(function() {
-        return repository.mergeBranches(branchName, `origin/${branchName}`);
       }).then(() => {
-        return repository.getBranch(branchName)
+        return repository.getBranch(`origin/${branchName}`)
         .then(function(reference) {
           return repository.checkoutRef(reference);
         });

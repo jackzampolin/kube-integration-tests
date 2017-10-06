@@ -65,136 +65,138 @@ app.post('/', function (req, res) {
   let startTime = moment()
 
   // Check out the pushed branch of blockstack-core
-  bs.checkoutRepo(gitBranch).done(() => {
-    // Test constants
-    const gitCommit = git.short(config.blockstackDir);
-    const namespace = `${gitBranch}-${gitCommit}`;
-    const tests = bs.getTests();
+  if (gitBranch !== "") {
+    bs.checkoutRepo(gitBranch).done(() => {
+      // Test constants
+      const gitCommit = git.short(config.blockstackDir);
+      const namespace = `${gitBranch}-${gitCommit}`;
+      const tests = bs.getTests();
 
-    //  Initalize reporting vars
-    let numNodes = 0;
-    let numPods = 0;
-    let comp = 0;
-    let compPerc = 0.0;
-    let remain = tests.length;
-    let remainPerc = 100.0;
-    let failed = [];
+      //  Initalize reporting vars
+      let numNodes = 0;
+      let numPods = 0;
+      let comp = 0;
+      let compPerc = 0.0;
+      let remain = tests.length;
+      let remainPerc = 100.0;
+      let failed = [];
 
-    // Log the start of the test
-    logger.info(`[${namespace}] Starting...`)
-    kube.getNodes().then((result) => {
-      numNodes = result.items.length;
-      sl.send(`Test \`${namespace}\` started. Go to the dashboard to watch progress: \`https://monitoring.technofractal.com/sources/1/dashboards/7\`.`)
-      influx.logProgress(gitBranch, gitCommit, "startStop", tests.length, numPods, numNodes, compPerc, comp, remainPerc, remain);
-    }).catch((err) => { logger.error(err) });
-
-    // Create test log folder
-    mkdirp(`${__dirname}/test-out/${namespace}`, (err) => {
-        if (err) { logger.info(err) }
-    });
-
-    // Create the namespace and then create tests in it
-    kube.createNamespace(namespace).then((result) => {
-      logger.info(`[${namespace}] ${tests.length} queued...`)
-      let runs = 0;
-      // Create 10 / second to avoid flooding the API server
-      let interval = setInterval(() => {
-        kube.createPod(gitBranch, gitCommit, tests[runs], tests.length).catch((err) => { logger.info(err) })
-        runs++;
-        if (runs >= tests.length) {
-          logger.info(`[${namespace}] ${runs} started...`)
-          clearInterval(interval)
-        }
-      }, 100)
-    }).catch((err) => { logger.info(err) })
-
-    res.send(JSON.stringify({"status": "ok"}))
-
-    // Check progress on the test every 1 minute
-    let runs = 0;
-    let interval = setInterval(() => {
-
-      // Get node data
+      // Log the start of the test
+      logger.info(`[${namespace}] Starting...`)
       kube.getNodes().then((result) => {
         numNodes = result.items.length;
-        // Get pod data
-        kube.getPods(namespace).then((result) => {
-          // Store pod statuses for reporting
-          let podStatuses = {
-            "succeeded": 0,
-            "pending": 0,
-            "failed": 0,
-            "running": 0
+        sl.send(`Test \`${namespace}\` started. Go to the dashboard to watch progress: \`https://monitoring.technofractal.com/sources/1/dashboards/7\`.`)
+        influx.logProgress(gitBranch, gitCommit, "startStop", tests.length, numPods, numNodes, compPerc, comp, remainPerc, remain);
+      }).catch((err) => { logger.error(err) });
+
+      // Create test log folder
+      mkdirp(`${__dirname}/test-out/${namespace}`, (err) => {
+          if (err) { logger.info(err) }
+      });
+
+      // Create the namespace and then create tests in it
+      kube.createNamespace(namespace).then((result) => {
+        logger.info(`[${namespace}] ${tests.length} queued...`)
+        let runs = 0;
+        // Create 10 / second to avoid flooding the API server
+        let interval = setInterval(() => {
+          kube.createPod(gitBranch, gitCommit, tests[runs], tests.length).catch((err) => { logger.info(err) })
+          runs++;
+          if (runs >= tests.length) {
+            logger.info(`[${namespace}] ${runs} started...`)
+            clearInterval(interval)
           }
-
-          // Save failed pods logs if not seen before
-          result.items.forEach((item) => {
-            let status = item.status.phase.toLowerCase()
-            if (status === "failed") {
-              let podName = item.metadata.name
-              if (!failed.includes(podName)) {
-                kube.getLogs(namespace, podName).then((log) => {
-                  let filePath = `${namespace}/${podName}`
-                  logger.error(`[${namespace}] test in ${podName} failed...`)
-                  sl.send(`Test \`${podName}\` failed. Logs available: \`${config.serverName}/${filePath}\``)
-                  fs.writeFileSync(`${__dirname}/test-out/${filePath}`, log)
-                }).catch((err) => { logger.info(err) })
-                failed.push(podName)
-              }
-            }
-            podStatuses[status] += 1
-          })
-
-          // Reset reporting vars and report
-          numPods = result.items.length
-          comp = podStatuses.succeeded + podStatuses.failed
-          remain = podStatuses.running + podStatuses.pending
-          compPerc = (comp / tests.length) * 100
-          remainPerc = (remain /tests.length) * 100
-          logger.info(`[${namespace}] comp: ${comp}, remain: ${remain}, iter: ${runs}`)
-          influx.logProgress(gitBranch, gitCommit, "progress", tests.length, numPods, numNodes, compPerc, comp, remainPerc, remain)
-        })
+        }, 100)
       }).catch((err) => { logger.info(err) })
 
-      // Increment the number of runs
-      runs++;
+      res.send(JSON.stringify({"status": "ok"}))
 
-      // Check if the test is complete, if it is report
-      let testLog = `[${namespace}]Run results:
-  Test Time:    ${startTime.diff(moment(), 'minutes')}
-  Number Tests: ${tests.length}
-  Success Tests: ${tests.length - failed.length}
-  Failed Tests: ${failed}`
-      if (runs > 5 && numPods === 0) {
-        logger.info(testLog)
-        sl.send(`\`\`\`${testLog}\`\`\``)
-        influx.logProgress(gitBranch, gitCommit, "startStop", tests.length, 0, numNodes, 100.0, tests.length, 0.0, 0);
-        kube.deleteNamespace(namespace).then((ns) => { logger.info(`[${namespace}] Finshed...`) }).catch((err) => { logger.info(err) })
-        clearInterval(interval);
-      }
+      // Check progress on the test every 1 minute
+      let runs = 0;
+      let interval = setInterval(() => {
 
-      // In the case of stalled pods, end the test and save the logs from the stalled pods
-      if (runs >= 90) {
-        influx.logProgress(gitBranch, gitCommit, "startStop", tests.length, 0, numNodes, 100.0, tests.length, 0.0, 0);
-        sl.send(`\`\`\`${testLog}\`\`\``)
-        logger.info(testLog)
-        kube.getPods(namespace).then((result) => {
-          let stalledPods = result.items.filter((pod) => { pod.status.phase.toLowerCase() === "running" })
-          stalledPods.forEach((pod) => {
-            let podName = pod.metadata.name
-            kube.getLogs(namespace, podName).then((log) => {
-              let logsUrl = `https://${config.serverName}/test-out/${namespace}/${podName}`
-              sl.send(`Test \`${pod}\` stalled. Logs available: \`${logsUrl}\``)
-              fs.writeFileSync(`${__dirname}/test-out/${namespace}/${podName}`, log)
-            }).catch((err) => { logger.info(err) })
+        // Get node data
+        kube.getNodes().then((result) => {
+          numNodes = result.items.length;
+          // Get pod data
+          kube.getPods(namespace).then((result) => {
+            // Store pod statuses for reporting
+            let podStatuses = {
+              "succeeded": 0,
+              "pending": 0,
+              "failed": 0,
+              "running": 0
+            }
+
+            // Save failed pods logs if not seen before
+            result.items.forEach((item) => {
+              let status = item.status.phase.toLowerCase()
+              if (status === "failed") {
+                let podName = item.metadata.name
+                if (!failed.includes(podName)) {
+                  kube.getLogs(namespace, podName).then((log) => {
+                    let filePath = `${namespace}/${podName}`
+                    logger.error(`[${namespace}] test in ${podName} failed...`)
+                    sl.send(`Test \`${podName}\` failed. Logs available: \`${config.serverName}/${filePath}\``)
+                    fs.writeFileSync(`${__dirname}/test-out/${filePath}`, log)
+                  }).catch((err) => { logger.info(err) })
+                  failed.push(podName)
+                }
+              }
+              podStatuses[status] += 1
+            })
+
+            // Reset reporting vars and report
+            numPods = result.items.length
+            comp = podStatuses.succeeded + podStatuses.failed
+            remain = podStatuses.running + podStatuses.pending
+            compPerc = (comp / tests.length) * 100
+            remainPerc = (remain /tests.length) * 100
+            logger.info(`[${namespace}] comp: ${comp}, remain: ${remain}, iter: ${runs}`)
+            influx.logProgress(gitBranch, gitCommit, "progress", tests.length, numPods, numNodes, compPerc, comp, remainPerc, remain)
           })
-          kube.deleteNamespace(namespace).then((ns) => { logger.info(`[${namespace}] Finshed...`) }).catch((err) => { logger.info(err) })
-        })
-        clearInterval(interval);
-      }
-    }, 60000);
+        }).catch((err) => { logger.info(err) })
 
-  })
+        // Increment the number of runs
+        runs++;
+
+        // Check if the test is complete, if it is report
+        let testLog = `[${namespace}]Run results:
+    Test Time:    ${startTime.diff(moment(), 'minutes')}
+    Number Tests: ${tests.length}
+    Success Tests: ${tests.length - failed.length}
+    Failed Tests: ${failed}`
+        if (runs > 5 && numPods === 0) {
+          logger.info(testLog)
+          sl.send(`\`\`\`${testLog}\`\`\``)
+          influx.logProgress(gitBranch, gitCommit, "startStop", tests.length, 0, numNodes, 100.0, tests.length, 0.0, 0);
+          kube.deleteNamespace(namespace).then((ns) => { logger.info(`[${namespace}] Finshed...`) }).catch((err) => { logger.info(err) })
+          clearInterval(interval);
+        }
+
+        // In the case of stalled pods, end the test and save the logs from the stalled pods
+        if (runs >= 90) {
+          influx.logProgress(gitBranch, gitCommit, "startStop", tests.length, 0, numNodes, 100.0, tests.length, 0.0, 0);
+          sl.send(`\`\`\`${testLog}\`\`\``)
+          logger.info(testLog)
+          kube.getPods(namespace).then((result) => {
+            let stalledPods = result.items.filter((pod) => { pod.status.phase.toLowerCase() === "running" })
+            stalledPods.forEach((pod) => {
+              let podName = pod.metadata.name
+              kube.getLogs(namespace, podName).then((log) => {
+                let logsUrl = `https://${config.serverName}/test-out/${namespace}/${podName}`
+                sl.send(`Test \`${pod}\` stalled. Logs available: \`${logsUrl}\``)
+                fs.writeFileSync(`${__dirname}/test-out/${namespace}/${podName}`, log)
+              }).catch((err) => { logger.info(err) })
+            })
+            kube.deleteNamespace(namespace).then((ns) => { logger.info(`[${namespace}] Finshed...`) }).catch((err) => { logger.info(err) })
+          })
+          clearInterval(interval);
+        }
+      }, 60000);
+
+    })
+  }
 })
 
 // Serve the log files from `test-out`
