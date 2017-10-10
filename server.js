@@ -109,7 +109,7 @@ app.post('/', function (req, res) {
         }, 100)
       }).catch((err) => { logger.info(err) })
 
-      res.send(JSON.stringify({"status": "ok"}))
+      // res.send(JSON.stringify({"status": "ok"}))
 
       // Check progress on the test every 1 minute
       let runs = 0;
@@ -197,6 +197,7 @@ app.post('/', function (req, res) {
 
     })
   }
+  res.send(JSON.stringify({"status": "ok"}))
 })
 
 // Serve the log files from `test-out`
