@@ -46,7 +46,6 @@ app.use(bodyParser.json());
 
 // Helper function for fetching the tag out of the array
 function getTag (tags) {
-  console.log(`tags`)
   let out = ""
   tags.forEach((tag) => {
     if (tag.includes("develop") || tag.includes("master") || tag.includes("hotfix")) {
@@ -61,6 +60,7 @@ app.post('/', function (req, res) {
 
   // Pull branch information from request
   logger.info(`Post conatined following tags: ${req.body.updated_tags}`)
+  console.log(req.body)
   let gitBranch = getTag(req.body.updated_tags);
 
   // Start timer
