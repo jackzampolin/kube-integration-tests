@@ -46,10 +46,11 @@ app.use(bodyParser.json());
 
 // Helper function for fetching the tag out of the array
 function getTag (tags) {
+  console.log(`tags`)
   let out = ""
   tags.forEach((tag) => {
     if (tag.includes("develop") || tag.includes("master") || tag.includes("hotfix")) {
-      out = tag
+      out = tag.replace("_","/")
     }
   })
   return out
