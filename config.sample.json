@@ -1,6 +1,5 @@
 {
   "serverName": "foo.example.com",
-  "chronografUrl": "https://chronograf.example.com/sources/1/dashboards/1",
   "influxHost": "influx.example.com",
   "influxUser": "admin",
   "influxPass": "admin",

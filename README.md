@@ -51,14 +51,13 @@ The flow for this system is as follows:
 - [Nginx](https://nginx.com) - For serving test logs and providing `https`
   * There is a sample nginx config in this repo: `nginx.conf.sample`
 
-### Configuration
+### Configuration/Deployment
 
 There is a sample configuration file at `config.sample.json`. Copy it to `config.json` and input your details:
 
 ```json
 {
   "serverName": "foo.example.com",
-  "chronografUrl": "https://chronograf.example.com/sources/1/dashboards/1",
   "influxHost": "influx.example.com",
   "influxUser": "admin",
   "influxPass": "admin",
@@ -69,6 +68,8 @@ There is a sample configuration file at `config.sample.json`. Copy it to `config
   "kubeConfigPath": "/path/to/.kube/config"
 }
 ```
+
+You will also want to copy `nginx.conf.sample` and modify it to suit your needs. Finally there is also a `systemd` unit file to run the server as a `systemd` service. You should modify that to suit your needs and install it at `/etc/systemd/system/integrationtests.service`
 
 ### Kubernetes Configuration
 
