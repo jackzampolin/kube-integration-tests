@@ -103,6 +103,10 @@ class Kube {
 
   podJSON (gitBranch, gitCommit, test, numTests) {
     let testName = test.replace(/_/g, "-")
+    let tag = gitBranch
+    if (tag.includes("hotfix")) {
+      tag = tag.replace(/-/, "_")
+    }
     return {
       body: {
         "apiVersion": "v1",
@@ -113,7 +117,7 @@ class Kube {
           "containers": [
             {
               "name": "integration-test-run",
-              "image": `quay.io/blockstack/integrationtests:${gitBranch}`,
+              "image": `quay.io/blockstack/integrationtests:${tag}`,
               "imagePullPolicy": "Always",
               "command": [ "blockstack-test-scenario", `blockstack_integration_tests.scenarios.${test}`, "--influx" ],
               "env": [

@@ -98,7 +98,7 @@ app.post('/', function (req, res) {
         logger.info(`[${namespace}] Starting...`)
         kube.getNodes().then((result) => {
           numNodes = result.items.length;
-          sl.send(`Test \`${namespace}\` started. Go to the dashboard to watch progress: \`https://monitoring.technofractal.com/sources/1/dashboards/7\`.`)
+          sl.send(`Test \`${namespace}\` started. Go to the dashboard to watch progress: \`${config.chronografURL}\`.`)
           influx.logProgress(gitBranch, gitCommit, "startStop", tests.length, numPods, numNodes, compPerc, comp, remainPerc, remain);
         }).catch((err) => { logger.error(err) });
 
